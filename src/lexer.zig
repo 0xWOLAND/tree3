@@ -83,6 +83,8 @@ pub const Lexer = struct {
 
         if (std.mem.eql(u8, name, "t"))
             return .{ .kind = .KeywordT };
+        if (std.mem.eql(u8, name, "!result"))
+            return .{ .kind = .Namespace, .value = "!result" };
 
         return .{ .kind = .Identifier, .value = name };
     }

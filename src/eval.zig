@@ -89,7 +89,7 @@ pub fn eval(t: *Tree, env: *Env, ast: *const AST) EvalError!Id {
             break :blk acc;
         },
 
-        .Lambda => |_| error.LambdaNotSupported,
+        .Lambda => |_| error.LambdaNotSupported, // TODO: Implement lambdas
 
         .Def => |d| blk: {
             const body = try eval(t, env, d.body);
