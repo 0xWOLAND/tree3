@@ -3,42 +3,52 @@ const std = @import("std");
 pub const Id = u32;
 
 pub const Node = struct {
+    pub const Kind = enum { Leaf, Stem, Fork };
+
+    kind: Kind,
     lhs: ?Id,
     rhs: ?Id,
 
     pub fn leaf() Node {
-        return .{ .lhs = null, .rhs = null };
+        return .{ .kind = .Leaf, .lhs = null, .rhs = null };
     }
-
     pub fn stem(a: Id) Node {
-        return .{ .lhs = null, .rhs = a };
+        return .{ .kind = .Stem, .lhs = null, .rhs = a };
     }
-
     pub fn fork(a: Id, b: Id) Node {
-        return .{ .lhs = a, .rhs = b };
+        return .{ .kind = .Fork, .lhs = a, .rhs = b };
     }
 };
 
 pub const Trees = struct {
+    arena: std.heap.ArenaAllocator,
     allocator: std.mem.Allocator,
+    arena_alloc: std.mem.Allocator,
+
     nodes: std.ArrayListUnmanaged(Node),
     table: std.AutoHashMap(Node, Id),
 
-    pub fn init(allocator: std.mem.Allocator) !Trees {
+    pub fn init(parent: std.mem.Allocator) !Trees {
+        var arena = std.heap.ArenaAllocator.init(parent);
+        const aalloc = arena.allocator();
+
         return .{
-            .allocator = allocator,
+            .arena = arena,
+            .allocator = parent,
+            .arena_alloc = aalloc,
             .nodes = .{},
-            .table = std.AutoHashMap(Node, Id).init(allocator),
+            .table = std.AutoHashMap(Node, Id).init(parent),
         };
     }
 
     pub fn deinit(self: *Trees) void {
         self.nodes.deinit(self.allocator);
         self.table.deinit();
+        self.arena.deinit();
     }
 
     pub fn insert(self: *Trees, n: Node) !Id {
-        if (self.table.get(n)) |idx| return idx;
+        if (self.table.get(n)) |existing| return existing;
 
         const id: Id = @intCast(self.nodes.items.len);
         try self.nodes.append(self.allocator, n);
@@ -50,7 +60,6 @@ pub const Trees = struct {
         return self.nodes.items[id];
     }
 
-    /// Simple branch-first evaluator
     pub fn apply(self: *Trees, a0: Id, b0: Id) !Id {
         var a = a0;
         var b = b0;
@@ -58,42 +67,42 @@ pub const Trees = struct {
         while (true) {
             const an = self.get(a);
 
-            // △ b → △ b
-            if (an.lhs == null and an.rhs == null)
-                return try self.insert(Node.stem(b));
+            switch (an.kind) {
+                .Leaf => return try self.insert(Node.stem(b)),
 
-            // △ a b → △ a b
-            if (an.lhs == null and an.rhs != null)
-                return try self.insert(Node.fork(an.rhs.?, b));
+                .Stem => return try self.insert(Node.fork(an.rhs.?, b)),
 
-            // fork-case: inspect left
-            const left = self.get(an.lhs.?);
+                .Fork => {
+                    const left = self.get(an.lhs.?);
 
-            // △ △ a b = a
-            if (left.lhs == null and left.rhs == null)
-                return an.rhs.?;
+                    switch (left.kind) {
+                        .Leaf => return an.rhs.?,
 
-            // △ (△ x) y b = x b (y b)
-            if (left.lhs == null and left.rhs != null) {
-                a = left.rhs.?;
-                continue;
+                        .Stem => {
+                            a = left.rhs.?;
+                            continue;
+                        },
+
+                        .Fork => {
+                            const bnode = self.get(b);
+                            switch (bnode.kind) {
+                                .Leaf => return left.lhs.?,
+
+                                .Stem => {
+                                    a = left.rhs.?;
+                                    b = bnode.rhs.?;
+                                    continue;
+                                },
+
+                                .Fork => {
+                                    a = an.rhs.?;
+                                    b = bnode.lhs.?;
+                                },
+                            }
+                        },
+                    }
+                },
             }
-
-            // △ (△ x y) z w cases
-            const bnode = self.get(b);
-
-            if (bnode.lhs == null and bnode.rhs == null)
-                return left.lhs.?;
-
-            if (bnode.lhs == null and bnode.rhs != null) {
-                a = left.rhs.?;
-                b = bnode.rhs.?;
-                continue;
-            }
-
-            // fork/fork
-            a = an.rhs.?;
-            b = bnode.lhs.?;
         }
     }
 };
