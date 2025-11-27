@@ -21,37 +21,29 @@ pub const Node = struct {
 };
 
 pub const Trees = struct {
-    arena: std.heap.ArenaAllocator,
-    allocator: std.mem.Allocator,
-    arena_alloc: std.mem.Allocator,
+    alloc: std.mem.Allocator,
 
     nodes: std.ArrayListUnmanaged(Node),
     table: std.AutoHashMap(Node, Id),
 
     pub fn init(parent: std.mem.Allocator) !Trees {
-        var arena = std.heap.ArenaAllocator.init(parent);
-        const aalloc = arena.allocator();
-
         return .{
-            .arena = arena,
-            .allocator = parent,
-            .arena_alloc = aalloc,
+            .alloc = parent,
             .nodes = .{},
             .table = std.AutoHashMap(Node, Id).init(parent),
         };
     }
 
     pub fn deinit(self: *Trees) void {
-        self.nodes.deinit(self.allocator);
+        self.nodes.deinit(self.alloc);
         self.table.deinit();
-        self.arena.deinit();
     }
 
     pub fn insert(self: *Trees, n: Node) !Id {
         if (self.table.get(n)) |existing| return existing;
 
         const id: Id = @intCast(self.nodes.items.len);
-        try self.nodes.append(self.allocator, n);
+        try self.nodes.append(self.alloc, n);
         try self.table.put(n, id);
         return id;
     }
