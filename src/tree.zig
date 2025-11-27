@@ -20,13 +20,13 @@ pub const Node = struct {
     }
 };
 
-pub const Trees = struct {
+pub const Tree = struct {
     alloc: std.mem.Allocator,
 
     nodes: std.ArrayListUnmanaged(Node),
     table: std.AutoHashMap(Node, Id),
 
-    pub fn init(parent: std.mem.Allocator) !Trees {
+    pub fn init(parent: std.mem.Allocator) !Tree {
         return .{
             .alloc = parent,
             .nodes = .{},
@@ -34,12 +34,12 @@ pub const Trees = struct {
         };
     }
 
-    pub fn deinit(self: *Trees) void {
+    pub fn deinit(self: *Tree) void {
         self.nodes.deinit(self.alloc);
         self.table.deinit();
     }
 
-    pub fn insert(self: *Trees, n: Node) !Id {
+    pub fn insert(self: *Tree, n: Node) !Id {
         if (self.table.get(n)) |existing| return existing;
 
         const id: Id = @intCast(self.nodes.items.len);
@@ -48,11 +48,11 @@ pub const Trees = struct {
         return id;
     }
 
-    pub inline fn get(self: *Trees, id: Id) Node {
+    pub inline fn get(self: *Tree, id: Id) Node {
         return self.nodes.items[id];
     }
 
-    pub fn apply(self: *Trees, a0: Id, b0: Id) !Id {
+    pub fn apply(self: *Tree, a0: Id, b0: Id) !Id {
         var a = a0;
         var b = b0;
 

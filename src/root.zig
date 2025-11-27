@@ -1,40 +1,86 @@
 const std = @import("std");
-const expect = std.testing.expect;
+const Lexer = @import("lexer.zig").Lexer;
+const Parser = @import("parser.zig").Parser;
+const Env = @import("eval.zig").Env;
+const evalProgram = @import("eval.zig").evalProgram;
+const EvalError = @import("eval.zig").EvalError;
+const Tree = @import("tree.zig").Tree;
 
-const Trees = @import("tree.zig").Trees;
-const Node = @import("tree.zig").Node;
-const Id = @import("tree.zig").Id;
+fn run(alloc: std.mem.Allocator, src: []const u8) !struct { tree: Tree, env: Env } {
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-test "basic tree calculus apply" {
+    var lex = Lexer.init(src);
+    const toks = try lex.lexAll(a);
+    var prs = Parser.init(a, toks);
+    const asts = try prs.parse();
+
+    var tree = try Tree.init(alloc);
+    errdefer tree.deinit();
+
+    var env = Env.init(alloc);
+    errdefer env.deinit();
+
+    _ = try evalProgram(&tree, &env, asts);
+    return .{ .tree = tree, .env = env };
+}
+
+test "basic program" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var T = try Trees.init(alloc);
-    defer T.deinit();
+    const src =
+        \\x = 10
+        \\y = x
+        \\lst = [1 2 3]
+        \\t t
+    ;
 
-    const leaf = try T.insert(Node.leaf());
-    const stem_leaf = try T.insert(Node.stem(leaf));
-    const fork_ll = try T.insert(Node.fork(leaf, leaf));
+    var ctx = try run(alloc, src);
+    defer ctx.tree.deinit();
+    defer ctx.env.deinit();
 
-    // Identity-like behavior:
-    // △ (△ △ △) △   → △
-    const id = try T.insert(Node.fork(fork_ll, leaf));
+    const id_x = ctx.env.get("x").?;
+    const id_y = ctx.env.get("y").?;
+    const id_list = ctx.env.get("lst").?;
+    const id_apply = ctx.env.get("!result") orelse unreachable;
 
-    // apply id △ = △
-    const r1 = try T.apply(id, leaf);
-    try expect(r1 == leaf);
+    try std.testing.expectEqual(id_x, id_y);
+    const lst_node = ctx.tree.get(id_list);
+    try std.testing.expect(lst_node.kind != .Leaf);
 
-    // apply △ x = △ x  (stem)
-    const r2 = try T.apply(leaf, leaf);
-    const expected2 = try T.insert(Node.stem(leaf));
-    try expect(r2 == expected2);
+    const applied = id_apply;
+    const ap_node = ctx.tree.get(applied);
 
-    // apply (△ a) b = △ a b
-    const some_a = leaf;
-    const some_b = stem_leaf;
-    const stemA = try T.insert(Node.stem(some_a));
-    const r3 = try T.apply(stemA, some_b);
-    const expected3 = try T.insert(Node.fork(some_a, some_b));
-    try expect(r3 == expected3);
+    try std.testing.expect(ap_node.kind == .Stem);
+    const rhs = ap_node.rhs.?;
+    const rhs_node = ctx.tree.get(rhs);
+    try std.testing.expect(rhs_node.kind == .Leaf);
+}
+
+test "defs are immutable" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const src =
+        \\x = 1
+        \\x = 2
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    var lex = Lexer.init(src);
+    const toks = try lex.lexAll(arena.allocator());
+    var prs = Parser.init(arena.allocator(), toks);
+    const asts = try prs.parse();
+
+    var tree = try Tree.init(alloc);
+    defer tree.deinit();
+    var env = Env.init(alloc);
+    defer env.deinit();
+
+    try std.testing.expectError(EvalError.RebindImmutable, evalProgram(&tree, &env, asts));
 }
