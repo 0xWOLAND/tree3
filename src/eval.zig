@@ -18,10 +18,6 @@ pub const EvalError = error{
 
 pub const Env = std.StringHashMap(Id);
 
-fn setResult(env: *Env, v: Id) !void {
-    try env.put("!result", v);
-}
-
 fn encodeNumber(t: *Tree, n0: u64) !Id {
     var n = n0;
     if (n == 0) return try t.insert(Node.leaf());
