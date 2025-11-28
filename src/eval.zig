@@ -1,31 +1,29 @@
 const std = @import("std");
-const parser = @import("parser.zig");
 const Tree = @import("tree.zig").Tree;
 const Node = @import("tree.zig").Node;
 const Id = @import("tree.zig").Id;
 
-const AST = parser.AST;
+const Expr = @import("reader.zig").Expr;
 
-const AllocError = std.mem.Allocator.Error;
-pub const EvalError = AllocError || error{
+pub const EvalError = error{
     UnknownVariable,
-    LambdaNotSupported,
-    ImportNotSupported,
-    Overflow,
-    InvalidCharacter,
-    NoSpaceLeft,
-    MissingResult,
+    NotAFunction,
+    BadDefine,
+    BadLambda,
+    BadApplication,
     RebindImmutable,
-};
+    MissingResult,
+    EmptyList,
+} || std.mem.Allocator.Error;
 
 pub const Env = std.StringHashMap(Id);
 
-fn setResult(env: *Env, v: Id) EvalError!void {
+fn setResult(env: *Env, v: Id) !void {
     try env.put("!result", v);
 }
 
-fn encodeNumber(t: *Tree, s: []const u8) EvalError!Id {
-    var n = try std.fmt.parseInt(u64, s, 10);
+fn encodeNumber(t: *Tree, n0: u64) !Id {
+    var n = n0;
     if (n == 0) return try t.insert(Node.leaf());
 
     var cur: ?Id = try t.insert(Node.leaf());
@@ -39,80 +37,84 @@ fn encodeNumber(t: *Tree, s: []const u8) EvalError!Id {
     return cur.?;
 }
 
-fn encodeString(t: *Tree, s: []const u8) EvalError!Id {
-    var lst: Id = try t.insert(Node.leaf());
-    var i: usize = s.len;
-
+fn encodeString(t: *Tree, s: []const u8) !Id {
+    var lst = try t.insert(Node.leaf());
+    var i = s.len;
     while (i > 0) : (i -= 1) {
-        var buf: [32]u8 = undefined;
         const c = s[i - 1];
-        const num = try std.fmt.bufPrint(&buf, "{d}", .{c});
-        const enc = try encodeNumber(t, num);
-
+        const enc = try encodeNumber(t, @as(u64, c));
         lst = try t.insert(Node.fork(enc, lst));
     }
     return lst;
 }
 
-fn encodeList(t: *Tree, env: *Env, xs: []AST) EvalError!Id {
-    var lst: ?Id = try t.insert(Node.leaf());
+fn encodeList(t: *Tree, env: *Env, xs: []Expr) EvalError!Id {
+    var lst = try t.insert(Node.leaf());
     var i = xs.len;
     while (i > 0) : (i -= 1) {
-        const v = try eval(t, env, &xs[i - 1]);
-        lst = try t.insert(Node.fork(v, lst.?));
+        const v = try eval(xs[i - 1], env, t);
+        lst = try t.insert(Node.fork(v, lst));
     }
-    return lst.?;
+    return lst;
 }
 
-pub fn eval(t: *Tree, env: *Env, ast: *const AST) EvalError!Id {
-    return switch (ast.*) {
-        .TLeaf => try t.insert(Node.leaf()),
+pub fn eval(expr: Expr, env: *Env, t: *Tree) EvalError!Id {
+    return switch (expr) {
+        .Int => |v| try encodeNumber(t, @intCast(v)),
+        .Str => |s| try encodeString(t, s),
+        .Symbol => |name| blk: {
+            if (std.mem.eql(u8, name, "t"))
+                break :blk try t.insert(Node.leaf());
 
-        .TStem => |x| try t.insert(Node.stem(try eval(t, env, x))),
-
-        .TFork => |f| blk: {
-            const l = try eval(t, env, f.left);
-            const r = try eval(t, env, f.right);
-            break :blk try t.insert(Node.fork(l, r));
+            break :blk env.get(name) orelse return error.UnknownVariable;
         },
 
-        .Int => |s| try encodeNumber(t, s),
-        .Str => |s| try encodeString(t, s),
-        .List => |xs| try encodeList(t, env, xs),
+        .List => |list| blk: {
+            if (list.len == 0)
+                break :blk error.EmptyList;
 
-        .Var => |name| env.get(name) orelse error.UnknownVariable,
+            switch (list[0]) {
+                .Symbol => |sym| {
+                    if (std.mem.eql(u8, sym, "define")) {
+                        if (list.len != 3) break :blk error.BadDefine;
+                        const name_expr = list[1];
+                        if (name_expr != .Symbol) break :blk error.BadDefine;
 
-        .App => |f| blk: {
-            var acc = try eval(t, env, f.func);
-            for (f.args) |arg|
-                acc = try t.apply(acc, try eval(t, env, &arg));
+                        const value = try eval(list[2], env, t);
+                        if (env.get(name_expr.Symbol)) |existing| {
+                            if (existing != value) break :blk error.RebindImmutable;
+                        } else {
+                            try env.put(name_expr.Symbol, value);
+                        }
+                        break :blk value;
+                    }
+
+                    if (std.mem.eql(u8, sym, "list")) {
+                        break :blk try encodeList(t, env, list[1..]);
+                    }
+                },
+                else => {},
+            }
+
+            var acc = try eval(list[0], env, t);
+
+            var i: usize = 1;
+            while (i < list.len) : (i += 1)
+                acc = try t.apply(acc, try eval(list[i], env, t));
+
             break :blk acc;
         },
-
-        .Lambda => |_| error.LambdaNotSupported, // TODO: Implement lambdas
-
-        .Def => |d| blk: {
-            const body = try eval(t, env, d.body);
-            if (env.get(d.name)) |existing| {
-                if (existing != body) return error.RebindImmutable;
-                break :blk existing;
-            }
-            try env.put(d.name, body);
-            break :blk body;
-        },
-
-        .Import => |_| error.ImportNotSupported,
     };
 }
 
-pub fn evalSingle(t: *Tree, env: *Env, ast: *const AST) EvalError!Id {
-    const res = try eval(t, env, ast);
-    try setResult(env, res);
-    return res;
-}
-
-pub fn evalProgram(t: *Tree, env: *Env, asts: []const AST) EvalError!Id {
-    for (asts) |*ast|
-        _ = try evalSingle(t, env, ast);
-    return env.get("!result") orelse error.MissingResult;
+pub fn evalProgram(t: *Tree, env: *Env, exprs: []const Expr) EvalError!Id {
+    var last: ?Id = null;
+    for (exprs) |e| {
+        last = try eval(e, env, t);
+    }
+    if (last) |v| {
+        try env.put("!result", v);
+        return v;
+    }
+    return error.MissingResult;
 }
