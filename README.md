@@ -8,3 +8,8 @@ TODO:
 - [ ] Serialization
 - [ ] Partial evaluation/normal form compiler 
 - [ ] WASM runtime
+- [ ] Benchmarks
+- [ ] Parallelism 
+- [ ] Visualizer
+- [ ] `stdlib`
+- [ ] Types
