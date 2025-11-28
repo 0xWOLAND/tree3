@@ -9,7 +9,7 @@ const EvalError = @import("eval.zig").EvalError;
 const Tree = @import("tree.zig").Tree;
 const Node = @import("tree.zig").Node;
 
-fn run(alloc: std.mem.Allocator, src: []const u8) !struct { tree: Tree, env: Env } {
+pub fn run(alloc: std.mem.Allocator, src: []const u8) !struct { tree: Tree, env: Env } {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
     const a = arena.allocator();
@@ -22,6 +22,8 @@ fn run(alloc: std.mem.Allocator, src: []const u8) !struct { tree: Tree, env: Env
 
     var env = Env.init(alloc);
     errdefer env.deinit();
+
+    try env.put("t", try tree.insert(Node.stem(0)));
 
     _ = try evalProgram(&tree, &env, exprs);
 
