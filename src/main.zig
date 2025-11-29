@@ -9,6 +9,7 @@ const Tree = @import("tree.zig").Tree;
 const Node = @import("tree.zig").Node;
 
 const run = @import("root.zig").run;
+const decode = @import("patterns.zig").decode;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -31,7 +32,12 @@ pub fn main() !void {
         return;
     };
 
-    try ctx.tree.print(&ctx.env);
+    const parsed_tree = decode(&ctx.tree, result, alloc) catch {
+        std.debug.print("Failed to decode result.\n", .{});
+        return;
+    };
+
+    std.debug.print("Result Value = {any}\n", .{parsed_tree});
 
     std.debug.print("Result Node ID = {d}\n", .{result});
 }
