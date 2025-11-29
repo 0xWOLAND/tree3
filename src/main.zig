@@ -31,5 +31,7 @@ pub fn main() !void {
         return;
     };
 
+    try ctx.tree.print(&ctx.env);
+
     std.debug.print("Result Node ID = {d}\n", .{result});
 }

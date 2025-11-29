@@ -1,4 +1,5 @@
 const std = @import("std");
+const Env = @import("eval.zig").Env;
 
 pub const Id = u32;
 
@@ -96,5 +97,45 @@ pub const Tree = struct {
                 },
             }
         }
+    }
+
+    fn _print(self: *Tree, id: Id) !void {
+        const n = self.get(id);
+        std.debug.print("△", .{});
+
+        switch (n.kind) {
+            .Leaf => {},
+
+            .Stem => {
+                const c = n.rhs.?;
+                if (self.get(c).kind == .Leaf) std.debug.print(" △", .{}) else {
+                    std.debug.print(" (", .{});
+                    try self._print(c);
+                    std.debug.print(")", .{});
+                }
+            },
+
+            .Fork => {
+                const l = n.lhs.?;
+                const r = n.rhs.?;
+
+                if (self.get(l).kind == .Leaf) std.debug.print(" △", .{}) else {
+                    std.debug.print(" (", .{});
+                    try self._print(l);
+                    std.debug.print(")", .{});
+                }
+
+                if (self.get(r).kind == .Leaf) std.debug.print(" △", .{}) else {
+                    std.debug.print(" (", .{});
+                    try self._print(r);
+                    std.debug.print(")", .{});
+                }
+            },
+        }
+    }
+
+    pub fn print(self: *Tree, env: *Env) !void {
+        const id = env.get("!result") orelse return error.MissingResult;
+        try self._print(id);
     }
 };
