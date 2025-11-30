@@ -1,4 +1,5 @@
 const std = @import("std");
+const Env = @import("eval.zig").Env;
 
 pub const Id = u32;
 
