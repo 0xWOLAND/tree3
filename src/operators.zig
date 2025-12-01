@@ -2,7 +2,7 @@ const std = @import("std");
 const Tree = @import("tree.zig").Tree;
 const Node = @import("tree.zig").Node;
 const Id = @import("tree.zig").Id;
-const Env = std.StringHashMap(Id);
+const Env = @import("eval.zig").Env;
 
 const Base = struct { leaf: Id, k: Id, i: Id, f: Id };
 
