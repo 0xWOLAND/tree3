@@ -37,10 +37,17 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_cmd.addArgs(args);
 
     //
-    // zig build test  (tests inside src/root.zig)
+    // zig build test  (tests inside src/tests.zig)
     //
+    const tests_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "tree3", .module = lib }},
+    });
+
     const tests = b.addTest(.{
-        .root_module = lib,
+        .root_module = tests_mod,
     });
 
     const test_cmd = b.addRunArtifact(tests);
