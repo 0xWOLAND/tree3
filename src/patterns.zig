@@ -166,6 +166,7 @@ pub fn decode(
 
     if (asList(t, x, a)) |xs| {
         if (asString(t, x, a)) |str| {
+            a.free(xs);
             return ValueView{ .String = str };
         }
         return ValueView{ .List = xs };

@@ -50,7 +50,7 @@ $$
 Y I x = I(YI)x = YIx
 $$
 
-But not all seraches need to be terminating. To make recursive functions that don't have to eagerly evaluate $Y f$, we can instead evaluate $Yfx$ on any function argument $x$. Hence, we get the _wait_ arguemnt 
+But not all searches need to be terminating. To make recursive functions that don't have to eagerly evaluate $Y f$, we can instead evaluate $Yfx$ on any function argument $x$. Hence, we get the _wait_ argument 
 
 $$
     \text{wait} \{x,y\} = d\{I\} (d\{Ky\}(Kx))

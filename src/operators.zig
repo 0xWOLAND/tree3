@@ -39,10 +39,10 @@ fn boolIff(c: Base, p: Id, q: Id) Id {
 
 pub fn init(env: *Env, t: *Tree) !void {
     const c = try base(t);
-    env.put("true", c.k) catch {};
-    env.put("K", c.k) catch {};
-    env.put("false", c.f) catch {};
-    env.put("id", c.i) catch {};
+    try env.put("true", c.k);
+    try env.put("K", c.k);
+    try env.put("false", c.f);
+    try env.put("id", c.i);
 }
 
 test "core booleans behave" {

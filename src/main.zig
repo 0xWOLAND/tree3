@@ -16,7 +16,10 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const path = "programs/demo3.el";
+    var args = std.process.args();
+    _ = args.next();
+    const path = args.next() orelse "programs/demo1.el";
+
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 

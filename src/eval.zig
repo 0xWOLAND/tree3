@@ -73,9 +73,9 @@ pub fn eval(expr: Expr, env: *Env, t: *Tree) EvalError!Id {
                         if (list.len != 3) break :blk error.BadDefine;
                         const name_expr = list[1];
                         if (name_expr != .Symbol) break :blk error.BadDefine;
+                        if (env.get(name_expr.Symbol)) |_| break :blk error.RebindImmutable;
 
                         const value = try eval(list[2], env, t);
-                        if (env.get(name_expr.Symbol)) |_| break :blk error.RebindImmutable;
                         try env.put(name_expr.Symbol, value);
                         break :blk value;
                     }
@@ -119,7 +119,6 @@ pub fn eval(expr: Expr, env: *Env, t: *Tree) EvalError!Id {
                     if (std.mem.eql(u8, sym, "list")) {
                         break :blk try encodeList(t, env, list[1..]);
                     }
-
                 },
                 else => {},
             }
