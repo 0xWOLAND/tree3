@@ -53,9 +53,14 @@ test "core booleans behave" {
     const x = try t.insert(Node.stem(c.k));
     const y = c.leaf;
 
-    try std.testing.expectEqual(x, try t.apply(try t.apply(c.k, x), y));
-    try std.testing.expectEqual(y, try t.apply(try t.apply(c.f, x), y));
-    try std.testing.expectEqual(x, try t.apply(c.i, x));
+    const res_k = try t.apply(try t.apply(c.k, x), y);
+    try std.testing.expect(std.meta.eql(t.get(res_k), t.get(x)));
+
+    const res_f = try t.apply(try t.apply(c.f, x), y);
+    try std.testing.expect(std.meta.eql(t.get(res_f), t.get(y)));
+
+    const res_i = try t.apply(c.i, x);
+    try std.testing.expect(std.meta.eql(t.get(res_i), t.get(x)));
 }
 
 test "boolean operators match truth tables" {

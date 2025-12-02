@@ -5,6 +5,7 @@ const Expr = @import("reader.zig").Expr;
 const Env = @import("eval.zig").Env;
 const evalProgram = @import("eval.zig").evalProgram;
 const EvalError = @import("eval.zig").EvalError;
+const operators = @import("operators.zig");
 
 const Tree = @import("tree.zig").Tree;
 const Node = @import("tree.zig").Node;
@@ -25,6 +26,8 @@ pub fn run(alloc: std.mem.Allocator, src: []const u8) !struct { tree: Tree, env:
     errdefer env.deinit();
 
     try env.put("t", try tree.insert(Node.stem(0)));
+    try env.put("leaf", try tree.insert(Node.leaf()));
+    try operators.init(&env, &tree);
 
     _ = try evalProgram(&tree, &env, exprs);
 
@@ -95,26 +98,114 @@ test "rebinding same value is allowed but different is an error" {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const ok_src =
-        \\(define x 11)
-        \\(define x 11) ; identical rebinding
-        \\x
-    ;
-
-    var ok_ctx = try run(alloc, ok_src);
-    defer ok_ctx.tree.deinit();
-    defer ok_ctx.env.deinit();
-
-    const id_x = ok_ctx.env.get("x").?;
-    const id_res = ok_ctx.env.get("!result").?;
-    try std.testing.expectEqual(id_x, id_res);
-
-    // but different rebinding must fail
     const bad_src =
         \\(define y 7)
         \\(define y 9)
     ;
 
-    // expect RebindImmutable error
     try std.testing.expectError(EvalError.RebindImmutable, run(alloc, bad_src));
+}
+
+test "define-rec builds a cycle" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const src =
+        \\(define-rec self (t self))
+        \\self
+    ;
+
+    var ctx = try run(alloc, src);
+    defer ctx.tree.deinit();
+    defer ctx.env.deinit();
+
+    const self_id = ctx.env.get("self").?;
+    const self_node = ctx.tree.get(self_id);
+    try std.testing.expect(self_node.kind == .Stem);
+    try std.testing.expectEqual(self_id, self_node.rhs.?);
+
+    const res = ctx.env.get("!result").?;
+    try std.testing.expectEqual(self_id, res);
+}
+
+test "pair builds a fork from two args" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const src =
+        \\(define p (pair leaf leaf))
+        \\p
+    ;
+
+    var ctx = try run(alloc, src);
+    defer ctx.tree.deinit();
+    defer ctx.env.deinit();
+
+    const leaf_id = ctx.env.get("leaf").?;
+    const p_id = ctx.env.get("p").?;
+    const node = ctx.tree.get(p_id);
+    try std.testing.expect(node.kind == .Fork);
+    try std.testing.expectEqual(leaf_id, node.lhs.?);
+    try std.testing.expectEqual(leaf_id, node.rhs.?);
+}
+
+test "first and second project from pair" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const src =
+        \\(define p (pair leaf (pair leaf leaf)))
+        \\(define a (first p))
+        \\(define b (second p))
+        \\(list a b)
+    ;
+
+    var ctx = try run(alloc, src);
+    defer ctx.tree.deinit();
+    defer ctx.env.deinit();
+
+    const leaf_id = ctx.env.get("leaf").?;
+    const a_id = ctx.env.get("a").?;
+    const b_id = ctx.env.get("b").?;
+    try std.testing.expectEqual(leaf_id, a_id);
+
+    const pair_id = ctx.env.get("p").?;
+    const pair_node = ctx.tree.get(pair_id);
+    try std.testing.expect(pair_node.kind == .Fork);
+    try std.testing.expectEqual(pair_node.rhs.?, b_id);
+
+    const result_list = ctx.env.get("!result").?;
+    const head = ctx.tree.get(result_list);
+    try std.testing.expect(head.kind == .Fork);
+    try std.testing.expectEqual(a_id, head.lhs.?);
+
+    const tail = ctx.tree.get(head.rhs.?);
+    try std.testing.expect(tail.kind == .Fork);
+    try std.testing.expectEqual(b_id, tail.lhs.?);
+}
+
+test "self-application shape is a loop" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const src =
+        \\(define-rec loop (pair loop loop))
+        \\loop
+    ;
+
+    var ctx = try run(alloc, src);
+    defer ctx.tree.deinit();
+    defer ctx.env.deinit();
+
+    const loop_id = ctx.env.get("loop").?;
+    const n = ctx.tree.get(loop_id);
+    try std.testing.expect(n.kind == .Fork);
+    try std.testing.expectEqual(loop_id, n.lhs.?);
+    try std.testing.expectEqual(loop_id, n.rhs.?);
+
+    // NOTE: (loop loop) would diverge under unbounded apply
 }

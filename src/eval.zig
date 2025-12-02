@@ -7,9 +7,7 @@ const Expr = @import("reader.zig").Expr;
 
 pub const EvalError = error{
     UnknownVariable,
-    NotAFunction,
     BadDefine,
-    BadLambda,
     BadApplication,
     RebindImmutable,
     MissingResult,
@@ -77,17 +75,51 @@ pub fn eval(expr: Expr, env: *Env, t: *Tree) EvalError!Id {
                         if (name_expr != .Symbol) break :blk error.BadDefine;
 
                         const value = try eval(list[2], env, t);
-                        if (env.get(name_expr.Symbol)) |existing| {
-                            if (existing != value) break :blk error.RebindImmutable;
-                        } else {
-                            try env.put(name_expr.Symbol, value);
-                        }
+                        if (env.get(name_expr.Symbol)) |_| break :blk error.RebindImmutable;
+                        try env.put(name_expr.Symbol, value);
                         break :blk value;
+                    }
+
+                    if (std.mem.eql(u8, sym, "define-rec")) {
+                        if (list.len != 3) break :blk error.BadDefine;
+                        const name_expr = list[1];
+                        if (name_expr != .Symbol) break :blk error.BadDefine;
+
+                        const hole = try t.reserve();
+                        try env.put(name_expr.Symbol, hole);
+
+                        const value = try eval(list[2], env, t);
+                        t.set(hole, t.get(value));
+                        break :blk hole;
+                    }
+
+                    if (std.mem.eql(u8, sym, "pair")) {
+                        if (list.len != 3) break :blk error.BadApplication;
+                        const a = try eval(list[1], env, t);
+                        const b = try eval(list[2], env, t);
+                        break :blk try t.insert(Node.fork(a, b));
+                    }
+
+                    if (std.mem.eql(u8, sym, "first")) {
+                        if (list.len != 2) break :blk error.BadApplication;
+                        const p = try eval(list[1], env, t);
+                        const node = t.get(p);
+                        if (node.kind != .Fork) break :blk error.BadApplication;
+                        break :blk node.lhs.?;
+                    }
+
+                    if (std.mem.eql(u8, sym, "second")) {
+                        if (list.len != 2) break :blk error.BadApplication;
+                        const p = try eval(list[1], env, t);
+                        const node = t.get(p);
+                        if (node.kind != .Fork) break :blk error.BadApplication;
+                        break :blk node.rhs.?;
                     }
 
                     if (std.mem.eql(u8, sym, "list")) {
                         break :blk try encodeList(t, env, list[1..]);
                     }
+
                 },
                 else => {},
             }

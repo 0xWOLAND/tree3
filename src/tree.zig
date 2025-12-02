@@ -1,5 +1,4 @@
 const std = @import("std");
-const Env = @import("eval.zig").Env;
 
 pub const Id = u32;
 
@@ -25,28 +24,32 @@ pub const Tree = struct {
     alloc: std.mem.Allocator,
 
     nodes: std.ArrayListUnmanaged(Node),
-    table: std.AutoHashMap(Node, Id),
 
     pub fn init(parent: std.mem.Allocator) !Tree {
         return .{
             .alloc = parent,
             .nodes = .{},
-            .table = std.AutoHashMap(Node, Id).init(parent),
         };
     }
 
     pub fn deinit(self: *Tree) void {
         self.nodes.deinit(self.alloc);
-        self.table.deinit();
     }
 
     pub fn insert(self: *Tree, n: Node) !Id {
-        if (self.table.get(n)) |existing| return existing;
-
         const id: Id = @intCast(self.nodes.items.len);
         try self.nodes.append(self.alloc, n);
-        try self.table.put(n, id);
         return id;
+    }
+
+    pub fn reserve(self: *Tree) !Id {
+        const id: Id = @intCast(self.nodes.items.len);
+        try self.nodes.append(self.alloc, Node.leaf());
+        return id;
+    }
+
+    pub fn set(self: *Tree, id: Id, n: Node) void {
+        self.nodes.items[id] = n;
     }
 
     pub inline fn get(self: *Tree, id: Id) Node {
